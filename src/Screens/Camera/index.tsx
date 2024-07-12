@@ -39,7 +39,7 @@ export default function CameraNavigation({navigation}: any) {
   }
   if (cameraPermission === 'granted') {
     const devices = Camera.getAvailableCameraDevices();
-    console.log('devices', devices);
+    // console.log('devices', devices);
   }
 
   console.log(`Re-rendering Navigator. Camera: ${cameraPermission}`);

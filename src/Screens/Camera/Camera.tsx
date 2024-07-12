@@ -1,7 +1,7 @@
 import * as React from 'react';
 import {useRef, useState, useCallback, useMemo} from 'react';
 import type {GestureResponderEvent} from 'react-native';
-import {StyleSheet, Text, View, StatusBar} from 'react-native';
+import {StyleSheet, Text, View, Image, ScrollView} from 'react-native';
 import type {PinchGestureHandlerGestureEvent} from 'react-native-gesture-handler';
 import {
   PinchGestureHandler,
@@ -41,6 +41,9 @@ import Reanimated, {
   useAnimatedProps,
   useSharedValue,
 } from 'react-native-reanimated';
+
+import {useSharedValue as sharedValueWorklet} from 'react-native-worklets-core';
+
 import {useEffect} from 'react';
 
 // import {StatusBarBlurBackground} from './StatusBarBlurBackground';
@@ -64,8 +67,12 @@ import {microchipAdjustmentPlugin} from './frame-processors/MicrochipAdjustment'
 import {microchipLedDetectionPlugin} from './frame-processors/MicrochipLedDetection';
 import {microchipProcessExtractionPlugin} from './frame-processors/MicrochipProcessExtracton';
 
-import {useSkiaFrameProcessor} from 'react-native-vision-camera';
+import {useSkiaFrameProcessor, DrawableFrame} from 'react-native-vision-camera';
 import {Skia} from '@shopify/react-native-skia';
+
+import {Modal, Portal, Button, PaperProvider} from 'react-native-paper';
+import {resolveBuildTimeSx} from '@gluestack-style/react';
+import {blue, green} from 'react-native-reanimated/lib/typescript/Colors';
 
 interface Result {
   example_array: (string | number | boolean)[];
@@ -75,6 +82,10 @@ interface Result {
   example_double: number;
   height: number;
   width: number;
+  squaresFound: number;
+  circleFound: boolean;
+  maxCircle: any;
+  squares: any;
 }
 
 const ReanimatedCamera = Reanimated.createAnimatedComponent(Camera);
@@ -84,6 +95,13 @@ Reanimated.addWhitelistedNativeProps({
 
 const SCALE_FULL_ZOOM = 3;
 
+const BulbRGBvaluesMap = {
+  white: 'rgba(190, 190, 190, 0.7)',
+  red: 'rgba(190, 10, 10, 0.7)',
+  green: 'rgba(10, 190, 10, 0.7)',
+  blue: 'rgba(10, 10, 190, 0.7)',
+};
+
 // type Props = NativeStackScreenProps<Routes, 'CameraPage'>
 type Props = NativeStackScreenProps<any, 'CameraPage'>;
 
@@ -92,12 +110,58 @@ export default function CameraView({navigation}: Props): React.ReactElement {
   const [isCameraInitialized, setIsCameraInitialized] = useState(false);
   const zoom = useSharedValue(1);
   const isPressingButton = useSharedValue(false);
+  const previewStatus = useSharedValue(false);
   const lastFrameTime = useSharedValue(Date.now());
 
   // check if camera page is active
   const isFocussed = useIsFocused();
   const isForeground = useIsForeground();
   const isActive = isFocussed && isForeground;
+
+  const circlePoints = sharedValueWorklet<{x: number; y: number}[]>([
+    // {x: 50, y: 2010}, //top left
+    // {x: 50, y: 150}, //top right
+    // {x: 3820, y: 2010}, //bottom left
+    // {x: 3820, y: 150}, //bottom right
+  ]);
+
+  const SquarePoints = sharedValueWorklet<{x: number; y: number}[][]>([]);
+
+  const StandardRGBPixels = sharedValueWorklet<
+    | {red: number; green: number; blue: number}
+    | {red: undefined; green: undefined; blue: undefined}
+    | null
+  >(null);
+
+  const AdjustedImage = sharedValueWorklet<boolean>(false);
+  const AdjustedStandardImageRGB = sharedValueWorklet<boolean>(false);
+
+  const LedColor = sharedValueWorklet<'red' | 'green' | 'blue' | 'white'>(
+    'white',
+  );
+
+  const [LedColorState, setLedColorState] = useState(LedColor.value);
+  useEffect(() => {
+    console.log(
+      'change color ------------------------------------------------------------------------------------------',
+      LedColor.value,
+    );
+    setLedColorState(LedColor.value);
+  }, [LedColor]);
+
+  //debug
+  const imageRef = sharedValueWorklet<string[]>([
+    'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ79TTSm1s5J4LwWmYNCTDF49V32qdzOuuk8w&s',
+    'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ79TTSm1s5J4LwWmYNCTDF49V32qdzOuuk8w&s',
+    'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ79TTSm1s5J4LwWmYNCTDF49V32qdzOuuk8w&s',
+  ]);
+  const [images, setImages] = useState<string[]>([]);
+  useEffect(() => {
+    console.log(
+      '1----------------------------------------------------------------------------------1',
+    );
+    setImages(imageRef.value);
+  }, [imageRef]);
 
   useEffect(() => {
     if (isActive) {
@@ -166,6 +230,9 @@ export default function CameraView({navigation}: Props): React.ReactElement {
   const minZoom = device?.minZoom ?? 1;
   const maxZoom = Math.min(device?.maxZoom ?? 1, MAX_ZOOM_FACTOR);
 
+  console.log('minZoom', minZoom);
+  console.log('maxZoom', maxZoom);
+
   const cameraAnimatedProps = useAnimatedProps<CameraProps>(() => {
     const z = Math.max(Math.min(zoom.value, maxZoom), minZoom);
     return {
@@ -182,7 +249,7 @@ export default function CameraView({navigation}: Props): React.ReactElement {
     [isPressingButton],
   );
   const onError = useCallback((error: CameraRuntimeError) => {
-    console.error(error);
+    console.error('error', error);
   }, []);
   const onInitialized = useCallback(() => {
     console.log('Camera initialized!');
@@ -195,6 +262,8 @@ export default function CameraView({navigation}: Props): React.ReactElement {
       //   path: media.path,
       //   type: type,
       // })
+
+      // start-sequence
     },
     [navigation],
   );
@@ -209,11 +278,14 @@ export default function CameraView({navigation}: Props): React.ReactElement {
   //#region Tap Gesture
   const onFocusTap = useCallback(
     ({nativeEvent: event}: GestureResponderEvent) => {
+      console.log('before support focus');
       if (!device?.supportsFocus) return;
+      console.log('after support focus');
       camera.current?.focus({
         x: event.locationX,
         y: event.locationY,
       });
+      console.log('support focus done');
     },
     [device?.supportsFocus],
   );
@@ -267,53 +339,239 @@ export default function CameraView({navigation}: Props): React.ReactElement {
   }, [device?.name, format, fps]);
 
   //   const frameProcessor = useFrameProcessor(frame => {
-  const frameProcessor = useSkiaFrameProcessor(frame => {
-    'worklet';
-    frame.render();
-
-    runAtTargetFps(0.5, () => {
-      //every 2 seconds
+  const frameProcessor = useSkiaFrameProcessor(
+    frame => {
       'worklet';
-      console.log(
-        `${frame.timestamp}: ${frame.width}x${frame.height} ${frame.pixelFormat} Frame (${frame.orientation})`,
-      );
-      examplePlugin(frame);
-      exampleKotlinSwiftPlugin(frame);
-      var result: Result = microchipAdjustmentPlugin(frame);
-      console.log('Adjustment', result);
-    });
+      frame.render();
 
-    // Define a set of test points
-    const testPoints = [
-      {x: 100, y: 650},
-      {x: 200, y: 650},
-      {x: 300, y: 700},
-      {x: 400, y: 750},
-    ];
+      runAtTargetFps(1 / 10, () => {
+        'worklet';
+        //every 5 seconds
 
-    // Create a paint object for drawing points
-    const paint = Skia.Paint();
-    paint.setColor(Skia.Color('red'));
-    paint.setStrokeWidth(10);
+        // console.log(
+        //   `${frame.timestamp}: ${frame.width}x${frame.height} ${frame.pixelFormat} Frame (${frame.orientation})`,
+        // );
+        const examplePluginStartTime = performance.now();
+        examplePlugin(frame);
+        const examplePluginEndTime = performance.now();
+        console.log(
+          `examplePlugin execution time: ${
+            examplePluginEndTime - examplePluginStartTime
+          } ms`,
+        );
 
-    // Iterate over the points and draw them on the frame
-    testPoints.forEach(point => {
-      frame.drawCircle(point.x, point.y, 15, paint);
-    });
-  }, []);
+        const exampleKotlinSwiftPluginStartTime = performance.now();
+        exampleKotlinSwiftPlugin(frame);
+        const exampleKotlinSwiftPluginEndTime = performance.now();
+        console.log(
+          `exampleKotlinSwiftPlugin execution time: ${
+            exampleKotlinSwiftPluginEndTime - exampleKotlinSwiftPluginStartTime
+          } ms`,
+        );
+
+        //Adjustment
+        const microchipAdjustmentPluginStartTime = performance.now();
+        var result: any = microchipAdjustmentPlugin(frame);
+        const microchipAdjustmentPluginEndTime = performance.now();
+        console.log(
+          `microchipAdjustmentPlugin execution time: ${
+            microchipAdjustmentPluginEndTime -
+            microchipAdjustmentPluginStartTime
+          } ms`,
+        );
+
+        // Set paths of the images here
+        const originalImgBase64 = `data:image/jpeg;base64,${result.originalImgBase64}`;
+        const contoursImgBase64 = `data:image/jpeg;base64,${result.contoursImgBase64}`;
+        const maskBase64 = `data:image/jpeg;base64,${result.maskBase64}`;
+        const resultBase64 = `data:image/jpeg;base64,${result.resultBase64}`;
+
+        imageRef.value = [
+          originalImgBase64,
+          contoursImgBase64,
+          maskBase64,
+          resultBase64,
+        ];
+
+        console.log(
+          'redPixel=',
+          result.standardRedPixels,
+          'greenPixel=',
+          result.standardGreenPixels,
+          'bluePixel=',
+          result.standardBluePixels,
+        );
+
+        if (result.circleFound && result.squares.length > 0) {
+          AdjustedImage.value = true;
+        } else {
+          AdjustedImage.value = false;
+        }
+
+        if (result.circleFound && AdjustedStandardImageRGB.value === false) {
+          StandardRGBPixels.value = {
+            red: result.standardRedPixels,
+            green: result.standardGreenPixels,
+            blue: result.standardBluePixels,
+          };
+          AdjustedStandardImageRGB.value = true;
+        }
+
+        if (result.maxCircle?.contour) {
+          console.log('circlePoints1', circlePoints.value.length);
+          circlePoints.value = result.maxCircle.contour.map((point: any[]) => ({
+            x: point[0],
+            y: point[1],
+          }));
+
+          console.log('circlePoints1', circlePoints.value.length);
+        } else {
+          circlePoints.value = [];
+        }
+
+        if (result.squaresFound && result.squares) {
+          // console.log('squares', result.squaresFound, result.squares);
+          // console.log('SquarePoints1', SquarePoints.value.length);
+          let squares = [];
+          for (let i = 0; i < result.squares.length; i++) {
+            squares.push(
+              result.squares[i].approx.map((point: any[]) => ({
+                x: point[0],
+                y: point[1],
+              })),
+            );
+          }
+          SquarePoints.value = squares;
+          // console.log(
+          //   'SquarePoints1',
+          //   SquarePoints.value.length,
+          //   SquarePoints.value,
+          // );
+        } else {
+          SquarePoints.value = [];
+        }
+      });
+      // end of 30 sec
+
+      runAtTargetFps(5, () => {
+        'worklet';
+        if (
+          StandardRGBPixels !== null &&
+          StandardRGBPixels.value?.red !== undefined &&
+          StandardRGBPixels.value?.green !== undefined &&
+          StandardRGBPixels.value?.blue !== undefined
+        ) {
+          const microchipLedDetectionPluginStartTime = performance.now();
+          var result: any = microchipLedDetectionPlugin(
+            frame,
+            StandardRGBPixels.value,
+          );
+
+          console.log('result Led', result);
+          LedColor.value = result['ledColor'];
+
+          const microchipLedDetectionPluginEndTime = performance.now();
+          console.log(
+            `microchipLedDetectionPlugin execution time: ${
+              microchipLedDetectionPluginEndTime -
+              microchipLedDetectionPluginStartTime
+            } ms`,
+          );
+        }
+      });
+
+      // Create a paint object for drawing points
+      const paintCircle = Skia.Paint();
+      paintCircle.setColor(Skia.Color('red'));
+      paintCircle.setStrokeWidth(25);
+
+      for (let i = 0; i < circlePoints.value.length - 1; i++) {
+        let x1 = circlePoints.value[i].x;
+        let y1 = circlePoints.value[i].y;
+        let x2 = circlePoints.value[i + 1].x;
+        let y2 = circlePoints.value[i + 1].y;
+
+        frame.drawLine(x1, y1, x2, y2, paintCircle);
+      }
+
+      const paintSquare = Skia.Paint();
+      paintSquare.setColor(Skia.Color('green'));
+      paintSquare.setStrokeWidth(25);
+
+      for (let i = 0; i < SquarePoints.value.length; i++) {
+        for (let j = 0; j < SquarePoints.value[i].length; j++) {
+          let j1 = j;
+          let j2 = (j + 1) % 4;
+          let x1 = SquarePoints.value[i][j1].x;
+          let y1 = SquarePoints.value[i][j1].y;
+          let x2 = SquarePoints.value[i][j2].x;
+          let y2 = SquarePoints.value[i][j2].y;
+
+          frame.drawLine(x1, y1, x2, y2, paintSquare);
+        }
+      }
+    },
+    [
+      imageRef,
+      circlePoints,
+      SquarePoints,
+      StandardRGBPixels,
+      AdjustedImage,
+      AdjustedStandardImageRGB,
+      LedColor,
+    ],
+  );
 
   const videoHdr = format?.supportsVideoHdr && enableHdr;
   const photoHdr = format?.supportsPhotoHdr && enableHdr && !videoHdr;
 
+  const [visible, setVisible] = React.useState(false);
+
+  const showModal = () => setVisible(true);
+  const hideModal = () => setVisible(false);
+  const containerStyle = {
+    backgroundColor: 'white',
+    padding: 20,
+    height: '50%', // Adjust this value as needed
+    width: '80%', // Adjust this value as needed
+    alignSelf: 'center',
+    borderRadius: 10,
+  };
+
   return (
     <>
       <View style={styles.container}>
+        <Portal>
+          <Modal
+            visible={visible}
+            onDismiss={hideModal}
+            // contentContainerStyle={containerStyle}
+          >
+            <ScrollView>
+              {imageRef.value.map((image, index) => (
+                <Image
+                  key={index}
+                  // source={{ uri: `file://${image}` }}
+                  source={{uri: `${image}`}}
+                  style={{
+                    width: '100%',
+                    height: 300,
+                    resizeMode: 'contain',
+                    marginBottom: 10,
+                  }}
+                />
+              ))}
+            </ScrollView>
+            <Button onPress={hideModal}>Close</Button>
+          </Modal>
+        </Portal>
+
         {device != null && (
           <PinchGestureHandler
             onGestureEvent={onPinchGesture}
             enabled={isActive}>
             <Reanimated.View
-              onTouchEnd={onFocusTap}
+              // onTouchEnd={onFocusTap}
               style={StyleSheet.absoluteFill}>
               <ReanimatedCamera
                 style={StyleSheet.absoluteFill}
@@ -324,13 +582,23 @@ export default function CameraView({navigation}: Props): React.ReactElement {
                 onError={onError}
                 onStarted={() => console.log('Camera started!')}
                 onStopped={() => console.log('Camera stopped!')}
-                onPreviewStarted={() => console.log('Preview started!')}
-                onPreviewStopped={() => console.log('Preview stopped!')}
+                onPreviewStarted={() => {
+                  previewStatus.value = true;
+                  console.log('Preview started!');
+                }}
+                onPreviewStopped={() => {
+                  previewStatus.value = false;
+                  console.log('Preview stopped!');
+                }}
+                // preview={previewStatus}
                 onOutputOrientationChanged={o =>
                   console.log(`Output orientation changed to ${o}!`)
                 }
                 onPreviewOrientationChanged={o =>
                   console.log(`Preview orientation changed to ${o}!`)
+                }
+                onUIRotationChanged={degrees =>
+                  console.log(`UI Rotation changed: ${degrees}°`)
                 }
                 format={format}
                 fps={fps}
@@ -342,10 +610,11 @@ export default function CameraView({navigation}: Props): React.ReactElement {
                 animatedProps={cameraAnimatedProps}
                 exposure={0}
                 enableFpsGraph={true}
-                outputOrientation="device"
+                outputOrientation="preview"
                 photo={true}
                 video={true}
                 frameProcessor={frameProcessor}
+                focusable={true}
               />
             </Reanimated.View>
           </PinchGestureHandler>
@@ -378,6 +647,23 @@ export default function CameraView({navigation}: Props): React.ReactElement {
           }}
           disabledOpacity={0.4}>
           <IonIcon name="arrow-back" color="white" size={24} />
+        </PressableOpacity>
+
+        <PressableOpacity
+          style={styles.moreButton}
+          onPress={() => {
+            showModal();
+          }}
+          disabledOpacity={0.4}>
+          <IonIcon name="albums-outline" color="white" size={24} />
+        </PressableOpacity>
+
+        <PressableOpacity
+          style={[
+            styles.bulbIcon,
+            {backgroundColor: BulbRGBvaluesMap[LedColorState]},
+          ]}>
+          <IonIcon name="bulb" color="white" size={25} />
         </PressableOpacity>
 
         <View style={styles.rightButtonRow}>
@@ -479,6 +765,27 @@ const styles = StyleSheet.create({
     height: CONTROL_BUTTON_SIZE,
     borderRadius: CONTROL_BUTTON_SIZE / 2,
     backgroundColor: 'rgba(140, 140, 140, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  moreButton: {
+    position: 'absolute',
+    top: SAFE_AREA_PADDING.paddingTop + 60,
+    left: SAFE_AREA_PADDING.paddingLeft + 10,
+    width: CONTROL_BUTTON_SIZE,
+    height: CONTROL_BUTTON_SIZE,
+    borderRadius: CONTROL_BUTTON_SIZE / 2,
+    backgroundColor: 'rgba(140, 140, 140, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  bulbIcon: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: SAFE_AREA_PADDING.paddingTop + 10,
+    width: CONTROL_BUTTON_SIZE,
+    height: CONTROL_BUTTON_SIZE,
+    borderRadius: CONTROL_BUTTON_SIZE / 2,
     justifyContent: 'center',
     alignItems: 'center',
   },

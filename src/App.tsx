@@ -256,3 +256,8 @@ export default App;
 // npx react-native start
 
 // npm start -- --reset-cache
+
+// adb logcat | findstr RTNMyPicker
+
+// adb -s 192.168.0.216:41811 logcat | findstr RTNMyPicker
+

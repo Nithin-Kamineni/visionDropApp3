@@ -81,34 +81,34 @@ type SectionProps = PropsWithChildren<{}>;
 function Instructions({children}: SectionProps): React.JSX.Element {
   const postsCollection = database.get('posts');
 
-  useEffect(() => {
-    const fetchData = async () => {
-      console.log('database', database);
-      await database.write(async () => {
-        console.log('data create...');
-        const newPost = await database.get('posts').create(post => {
-          post.title = 'New post4';
-          post.body = 'Lorem ipsum...2';
-        });
-        console.log('data created...', newPost);
-      });
+  // useEffect(() => {
+  //   const fetchData = async () => {
+  //     console.log('database', database);
+  //     await database.write(async () => {
+  //       console.log('data create...');
+  //       const newPost = await database.get('posts').create(post => {
+  //         post.title = 'New post4';
+  //         post.body = 'Lorem ipsum...2';
+  //       });
+  //       console.log('data created...', newPost);
+  //     });
 
-      console.log('data-querying1');
-      const posts = await database.get('posts').query().fetch();
-      console.log('posts', [posts]);
-      posts.map(post => {
-        console.log('post 11', post.title);
-      });
+  //     console.log('data-querying1');
+  //     const posts = await database.get('posts').query().fetch();
+  //     console.log('posts', [posts]);
+  //     posts.map(post => {
+  //       console.log('post 11', post.title);
+  //     });
 
-      console.log('data-querying2');
+  //     console.log('data-querying2');
 
-      // const postId = 'abcdefgh';
-      // const postFiltered = database.get('posts').find(postId);
-      // console.log('post2', postFiltered);
-    };
-    fetchData();
-    console.log('logg1');
-  }, []);
+  //     // const postId = 'abcdefgh';
+  //     // const postFiltered = database.get('posts').find(postId);
+  //     // console.log('post2', postFiltered);
+  //   };
+  //   fetchData();
+  //   console.log('logg1');
+  // }, []);
 
   const onRead = async () => {
     const allPosts = await database.get('posts').query().fetch();
