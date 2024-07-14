@@ -48,6 +48,7 @@ import {useEffect} from 'react';
 
 // import {StatusBarBlurBackground} from './StatusBarBlurBackground';
 import {CaptureButton} from '../../components/CaptureButton';
+import {SequenceButton} from '../../components/SequenceButton';
 
 import {PressableOpacity} from 'react-native-pressable-opacity';
 
@@ -73,6 +74,7 @@ import {Skia} from '@shopify/react-native-skia';
 import {Modal, Portal, Button, PaperProvider} from 'react-native-paper';
 import {resolveBuildTimeSx} from '@gluestack-style/react';
 import {blue, green} from 'react-native-reanimated/lib/typescript/Colors';
+import {Sequence} from './Sequence';
 
 interface Result {
   example_array: (string | number | boolean)[];
@@ -155,6 +157,9 @@ export default function CameraView({navigation}: Props): React.ReactElement {
     'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ79TTSm1s5J4LwWmYNCTDF49V32qdzOuuk8w&s',
     'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ79TTSm1s5J4LwWmYNCTDF49V32qdzOuuk8w&s',
   ]);
+
+  const isSequenceRunning = useRef(false);
+
   const [images, setImages] = useState<string[]>([]);
   useEffect(() => {
     console.log(
@@ -203,7 +208,7 @@ export default function CameraView({navigation}: Props): React.ReactElement {
     device = preferredDevice;
   }
 
-  const [targetFps, setTargetFps] = useState(15);
+  const [targetFps, setTargetFps] = useState(30);
 
   const screenAspectRatio = SCREEN_HEIGHT / SCREEN_WIDTH;
 
@@ -267,6 +272,75 @@ export default function CameraView({navigation}: Props): React.ReactElement {
     },
     [navigation],
   );
+
+  const stopSequence = async (onFinish: () => void) => {
+    try {
+      if (camera.current == null) throw new Error('Camera ref is null!');
+
+      console.log('Stoping sequence...');
+      isSequenceRunning.current = false;
+      onFinish();
+      console.log('Stoped Sequence');
+    } catch (e) {
+      console.error('Failed to stop sequence!', e);
+      // onFinish();
+    }
+  };
+
+  const startSequence = async (onFinish: () => void) => {
+    try {
+      if (camera.current == null) throw new Error('Camera ref is null!');
+
+      console.log('Starting sequence...');
+      const startTime = Date.now();
+      const duration = 30000; // 30 seconds in milliseconds
+      isSequenceRunning.current = true;
+
+      const takePhotoAndTrackTime = async () => {
+        if (!isSequenceRunning.current) {
+          console.log('Sequence stopped!');
+          onFinish();
+          return;
+        }
+
+        const currentTime = Date.now();
+        const elapsedTime = currentTime - startTime;
+
+        // Print the elapsed time every 100 milliseconds
+        if (elapsedTime % 100 < 50) {
+          console.log(`Elapsed time: ${elapsedTime}ms`);
+        }
+
+        // Take a photo once at the beginning
+        if (elapsedTime === 0) {
+          if (camera.current == null) throw new Error('Camera ref is null!');
+
+          const photo = await camera.current.takePhoto({
+            flash: flash,
+            enableShutterSound: true,
+          });
+          onMediaCaptured(photo, 'photo');
+        }
+
+        // Stop after 30 seconds
+        if (elapsedTime < duration) {
+          setTimeout(takePhotoAndTrackTime, 100);
+        } else {
+          console.log('Sequence completed!');
+          isSequenceRunning.current = false;
+          onFinish();
+        }
+      };
+
+      // Start the process
+      takePhotoAndTrackTime();
+    } catch (e) {
+      console.error('Failed to start sequence!', e);
+      isSequenceRunning.current = false;
+      onFinish();
+    }
+  };
+
   const onFlipCameraPressed = useCallback(() => {
     setCameraPosition(p => (p === 'back' ? 'front' : 'back'));
   }, []);
@@ -480,36 +554,36 @@ export default function CameraView({navigation}: Props): React.ReactElement {
         }
       });
 
-      // Create a paint object for drawing points
-      const paintCircle = Skia.Paint();
-      paintCircle.setColor(Skia.Color('red'));
-      paintCircle.setStrokeWidth(25);
+      // // Create a paint object for drawing points
+      // const paintCircle = Skia.Paint();
+      // paintCircle.setColor(Skia.Color('red'));
+      // paintCircle.setStrokeWidth(25);
 
-      for (let i = 0; i < circlePoints.value.length - 1; i++) {
-        let x1 = circlePoints.value[i].x;
-        let y1 = circlePoints.value[i].y;
-        let x2 = circlePoints.value[i + 1].x;
-        let y2 = circlePoints.value[i + 1].y;
+      // for (let i = 0; i < circlePoints.value.length - 1; i++) {
+      //   let x1 = circlePoints.value[i].x;
+      //   let y1 = circlePoints.value[i].y;
+      //   let x2 = circlePoints.value[i + 1].x;
+      //   let y2 = circlePoints.value[i + 1].y;
 
-        frame.drawLine(x1, y1, x2, y2, paintCircle);
-      }
+      //   frame.drawLine(x1, y1, x2, y2, paintCircle);
+      // }
 
-      const paintSquare = Skia.Paint();
-      paintSquare.setColor(Skia.Color('green'));
-      paintSquare.setStrokeWidth(25);
+      // const paintSquare = Skia.Paint();
+      // paintSquare.setColor(Skia.Color('green'));
+      // paintSquare.setStrokeWidth(25);
 
-      for (let i = 0; i < SquarePoints.value.length; i++) {
-        for (let j = 0; j < SquarePoints.value[i].length; j++) {
-          let j1 = j;
-          let j2 = (j + 1) % 4;
-          let x1 = SquarePoints.value[i][j1].x;
-          let y1 = SquarePoints.value[i][j1].y;
-          let x2 = SquarePoints.value[i][j2].x;
-          let y2 = SquarePoints.value[i][j2].y;
+      // for (let i = 0; i < SquarePoints.value.length; i++) {
+      //   for (let j = 0; j < SquarePoints.value[i].length; j++) {
+      //     let j1 = j;
+      //     let j2 = (j + 1) % 4;
+      //     let x1 = SquarePoints.value[i][j1].x;
+      //     let y1 = SquarePoints.value[i][j1].y;
+      //     let x2 = SquarePoints.value[i][j2].x;
+      //     let y2 = SquarePoints.value[i][j2].y;
 
-          frame.drawLine(x1, y1, x2, y2, paintSquare);
-        }
-      }
+      //     frame.drawLine(x1, y1, x2, y2, paintSquare);
+      //   }
+      // }
     },
     [
       imageRef,
@@ -620,7 +694,7 @@ export default function CameraView({navigation}: Props): React.ReactElement {
           </PinchGestureHandler>
         )}
 
-        <CaptureButton
+        {/* <CaptureButton
           style={styles.captureButton}
           camera={camera}
           onMediaCaptured={onMediaCaptured}
@@ -630,6 +704,20 @@ export default function CameraView({navigation}: Props): React.ReactElement {
           flash={supportsFlash ? flash : 'off'}
           enabled={isCameraInitialized && isActive}
           setIsPressingButton={setIsPressingButton}
+        /> */}
+
+        <SequenceButton
+          style={styles.sequenceButton}
+          camera={camera}
+          onMediaCaptured={onMediaCaptured}
+          cameraZoom={zoom}
+          minZoom={minZoom}
+          maxZoom={maxZoom}
+          flash={supportsFlash ? flash : 'off'}
+          enabled={isCameraInitialized && isActive}
+          setIsPressingButton={setIsPressingButton}
+          startSequence={startSequence}
+          stopSequence={stopSequence}
         />
 
         {/* <StatusBarBlurBackground /> */}
@@ -733,6 +821,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'black',
   },
   captureButton: {
+    position: 'absolute',
+    alignSelf: 'center',
+    bottom: SAFE_AREA_PADDING.paddingBottom,
+  },
+  sequenceButton: {
     position: 'absolute',
     alignSelf: 'center',
     bottom: SAFE_AREA_PADDING.paddingBottom,

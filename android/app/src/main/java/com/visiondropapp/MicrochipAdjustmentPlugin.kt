@@ -278,9 +278,7 @@ class MicrochipAdjustmentFrameProcessorPlugin(proxy: VisionCameraProxy, options:
         // val debug = (params["debug"] as? String)?.toString() ?: "debug"
 
         // Convert the image to a Mat
-        // val originalMat = convertImageToMat(image)
-
-        val originalMat = image.rgb()
+        val originalMat = convertImageToMat(image)
 
         // Get the dimensions of the Mat
         val width = originalMat.width()
